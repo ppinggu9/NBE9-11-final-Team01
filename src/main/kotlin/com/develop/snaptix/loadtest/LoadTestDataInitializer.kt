@@ -27,16 +27,17 @@ private val logger = KotlinLogging.logger {}
 private const val SEP = "════════════════════════════════════════════════"
 
 /**
- * loadtest 프로파일 활성 시 앱 기동과 함께 아래를 자동 수행한다.
+ * loadtest 프로파일 활성 시 앱 기동과 함께 아래를 자동 수행한다. (멀티 zone 버전)
  *
  *  1. 어드민 계정 생성 (멱등)
  *  2. 테스트 유저 200명 생성 (멱등)
- *  3. 이벤트 + 구역 생성 → 상태 ON_SALE 전환 (매 기동마다 새로 생성)
- *  4. loadtest/seed/.env  에 EVENT_ID / ZONE_ID / REDIS_STOCK_KEY 기록
+ *  3. 이벤트 1개 + **구역(zone) N개**(A/B/C/D) 생성 → ON_SALE (매 기동마다 새로 생성)
+ *  4. loadtest/seed/.env 에 EVENT_ID / ZONE_ID / REDIS_STOCK_KEY(첫 zone, 단일-스크립트 호환)
+ *     + ZONE_DB_IDS / REDIS_STOCK_KEYS(전체 zone, 멀티-스크립트용) 기록
  *  5. loadtest/seed/users.json 에 유저 목록 기록
  *
- *  k6 실행:
- *    source loadtest/seed/.env && k6 run loadtest/main.js
+ * 도메인: event=공연장/행사, zone=구역(A/B/C/D 등, 각 구역에 좌석 수).
+ *        세부 좌석 위치는 프런트 미구현으로 생략.
  */
 @Component
 @Profile("loadtest")
@@ -51,18 +52,18 @@ class LoadTestDataInitializer(
         private const val USER_EMAIL_PREFIX = "load-user"
         private const val USER_EMAIL_DOMAIN = "test.com"
         private const val USER_PASSWORD = "Test1234!"
-        private const val USER_COUNT = 200
+        private const val USER_COUNT = 1000
 
         private const val EVENT_NAME = "Load Test Event"
-        private const val ZONE_NAME = "A구역"
         private const val UNIT_PRICE = 10_000
-        private const val TOTAL_CAPACITY = 100
+
+        // ★ 멀티 zone: 구역 이름과 구역당 좌석 수. 구역 수를 늘리려면 여기만 수정.
+        private val ZONE_NAMES = listOf("A구역", "B구역", "C구역", "D구역")
+        private const val PER_ZONE_CAPACITY = 500 // 구역당 좌석 수 (4구역 × 100 = 총 400석)
 
         private const val SEED_ENV_PATH = "loadtest/seed/.env"
         private const val USERS_JSON_PATH = "loadtest/seed/users.json"
     }
-
-    // ── 진입점 ──────────────────────────────────────────────────────────────────
 
     override fun run(args: ApplicationArguments) {
         logger.info { "[LOADTEST] 시드 초기화 시작" }
@@ -91,9 +92,7 @@ class LoadTestDataInitializer(
             return
         }
         val encodedAdminPw =
-            requireNotNull(passwordEncoder.encode(ADMIN_PASSWORD)) {
-                "PasswordEncoder returned null"
-            }
+            requireNotNull(passwordEncoder.encode(ADMIN_PASSWORD)) { "PasswordEncoder returned null" }
         transaction {
             UsersTable.insert {
                 it[email] = ADMIN_EMAIL
@@ -120,11 +119,8 @@ class LoadTestDataInitializer(
             return
         }
 
-        // BCrypt는 비용이 크므로 동일 패스워드는 1회만 해싱
         val encodedPw =
-            requireNotNull(passwordEncoder.encode(USER_PASSWORD)) {
-                "PasswordEncoder returned null"
-            }
+            requireNotNull(passwordEncoder.encode(USER_PASSWORD)) { "PasswordEncoder returned null" }
         val startIdx = existingCount + 1
 
         transaction {
@@ -134,38 +130,42 @@ class LoadTestDataInitializer(
                 this[UsersTable.role] = UserRole.USER.name
             }
         }
-        logger.info { "[LOADTEST] 테스트 유저 생성: $USER_COUNT 명 (총 $USER_COUNT 명)" }
+        logger.info { "[LOADTEST] 테스트 유저 생성: $USER_COUNT 명" }
     }
 
-    // ── STEP 3: 이벤트 생성 + ON_SALE ───────────────────────────────────────────
+    // ── STEP 3: 이벤트 + 멀티 zone 생성 + ON_SALE ───────────────────────────────
+
+    private data class ZoneSeed(
+        val zoneId: String, // public UUID
+        val redisStockKey: String, // "ZONE:<internalId>:stock"
+    )
 
     private data class SeedResult(
         val eventId: String,
-        val zoneId: String,
-        val redisStockKey: String,
+        val zones: List<ZoneSeed>,
     )
 
     private fun seedEvent(): SeedResult {
         val now = OffsetDateTime.now(ZoneOffset.UTC)
 
-        // 매 기동마다 새 이벤트 생성 — 이전 이벤트의 Redis 재고는 이미 소모됐을 수 있으므로
         val createResponse =
             eventService.createEventWithZones(
                 EventBulkCreateRequest(
                     name = EVENT_NAME,
-                    description = "k6 부하 테스트용 이벤트",
+                    description = "k6 부하 테스트용 이벤트 (멀티 zone)",
                     location = "SnapTix 테스트 홀",
                     startTime = now.plusYears(1),
                     endTime = now.plusYears(1).plusHours(3),
                     initialStatus = EventStatus.PENDING,
+                    // ★ 구역 N개 생성
                     zones =
-                        listOf(
+                        ZONE_NAMES.map { name ->
                             ZoneCreateRequest(
-                                name = ZONE_NAME,
+                                name = name,
                                 unitPrice = UNIT_PRICE,
-                                totalCapacity = TOTAL_CAPACITY,
-                            ),
-                        ),
+                                totalCapacity = PER_ZONE_CAPACITY,
+                            )
+                        },
                 ),
             )
 
@@ -174,27 +174,34 @@ class LoadTestDataInitializer(
             EventStatusUpdateRequest(EventStatus.ON_SALE),
         )
 
-        val zone = createResponse.registeredZones[0]
-        logger.info { "[LOADTEST] 이벤트 생성 완료 → ON_SALE" }
-        logger.info { "[LOADTEST] EVENT_ID        = ${createResponse.eventId}" }
-        logger.info { "[LOADTEST] ZONE_ID         = ${zone.zoneId}" }
-        logger.info { "[LOADTEST] REDIS_STOCK_KEY = ${zone.redisStockKey}" }
+        val zones = createResponse.registeredZones.map { ZoneSeed(it.zoneId, it.redisStockKey) }
 
-        return SeedResult(createResponse.eventId, zone.zoneId, zone.redisStockKey)
+        logger.info { "[LOADTEST] 이벤트 생성 완료 → ON_SALE (zones=${zones.size})" }
+        logger.info { "[LOADTEST] EVENT_ID = ${createResponse.eventId}" }
+        zones.forEachIndexed { i, z ->
+            logger.info { "[LOADTEST] ZONE[$i] id=${z.zoneId} stockKey=${z.redisStockKey}" }
+        }
+
+        return SeedResult(createResponse.eventId, zones)
     }
 
     // ── STEP 4: loadtest/seed/.env 저장 ─────────────────────────────────────────
 
     private fun writeSeedEnv(result: SeedResult) {
         val envFile = File(SEED_ENV_PATH).also { it.parentFile?.mkdirs() }
+        val first = result.zones.first()
+        // 내부 zoneId 목록(=REDIS_STOCK_KEY의 가운데 숫자) / 전체 stock 키 목록
+        val zoneDbIds = result.zones.joinToString(",") { it.redisStockKey.split(":")[1] }
+        val stockKeys = result.zones.joinToString(",") { it.redisStockKey }
 
-        // 기존 .env가 있으면 EVENT_*/ZONE_*/REDIS_* 줄만 교체
         val preserved =
             if (envFile.exists()) {
                 envFile.readLines().filterNot { line ->
                     line.startsWith("EVENT_ID=") ||
                         line.startsWith("ZONE_ID=") ||
-                        line.startsWith("REDIS_STOCK_KEY=")
+                        line.startsWith("REDIS_STOCK_KEY=") ||
+                        line.startsWith("ZONE_DB_IDS=") ||
+                        line.startsWith("REDIS_STOCK_KEYS=")
                 }
             } else {
                 emptyList()
@@ -204,11 +211,15 @@ class LoadTestDataInitializer(
             preserved +
                 listOf(
                     "EVENT_ID=${result.eventId}",
-                    "ZONE_ID=${result.zoneId}",
-                    "REDIS_STOCK_KEY=${result.redisStockKey}",
+                    // 단일-zone 스크립트(order-load/sse-reconnect) 호환: 첫 zone
+                    "ZONE_ID=${first.zoneId}",
+                    "REDIS_STOCK_KEY=${first.redisStockKey}",
+                    // 멀티-zone 스크립트(redis-recovery)용: 전체
+                    "ZONE_DB_IDS=$zoneDbIds",
+                    "REDIS_STOCK_KEYS=$stockKeys",
                 )
         envFile.writeText(lines.joinToString("\n", postfix = "\n"))
-        logger.info { "[LOADTEST] $SEED_ENV_PATH 저장 완료 (절대경로: ${envFile.absolutePath})" }
+        logger.info { "[LOADTEST] $SEED_ENV_PATH 저장 완료 (zones=${result.zones.size})" }
     }
 
     // ── STEP 5: loadtest/seed/users.json 저장 ──────────────────────────────────
@@ -228,18 +239,15 @@ class LoadTestDataInitializer(
 
     private fun printSummary(result: SeedResult) {
         logger.info { "[LOADTEST] $SEP" }
-        logger.info { "[LOADTEST]  시드 완료 — seed.sh 없이 자동 생성됩니다" }
-        logger.info { "[LOADTEST]" }
+        logger.info { "[LOADTEST]  시드 완료 (멀티 zone) — seed.sh 없이 자동 생성됩니다" }
         logger.info { "[LOADTEST]  어드민: $ADMIN_EMAIL / $ADMIN_PASSWORD" }
         logger.info { "[LOADTEST]  유저  : $USER_EMAIL_PREFIX-1~$USER_COUNT@$USER_EMAIL_DOMAIN / $USER_PASSWORD" }
-        logger.info { "[LOADTEST]" }
-        logger.info { "[LOADTEST]  EVENT_ID        = ${result.eventId}" }
-        logger.info { "[LOADTEST]  ZONE_ID         = ${result.zoneId}" }
-        logger.info { "[LOADTEST]  REDIS_STOCK_KEY = ${result.redisStockKey}" }
-        logger.info { "[LOADTEST]" }
-        logger.info { "[LOADTEST]  k6 실행:" }
-        logger.info { "[LOADTEST]    source loadtest/seed/.env" }
-        logger.info { "[LOADTEST]    k6 run loadtest/main.js" }
+        logger.info { "[LOADTEST]  EVENT_ID = ${result.eventId}" }
+        logger.info {
+            "[LOADTEST]  ZONES    = ${result.zones.size} (${ZONE_NAMES.joinToString(
+                ",",
+            )}) × ${PER_ZONE_CAPACITY}석"
+        }
         logger.info { "[LOADTEST] $SEP" }
     }
 }

@@ -29,6 +29,7 @@ class RebuildService(
     private val rebuildCoordinator: RebuildCoordinator,
     private val readOnlyModeHolder: ReadOnlyModeHolder,
     private val rebuildMetrics: RebuildMetrics,
+    private val rebuildStatusHolder: RebuildStatusHolder,
     private val alertService: AlertService,
     @Qualifier("alertClock") private val clock: Clock,
 ) {
@@ -38,6 +39,9 @@ class RebuildService(
     fun rebuild() {
         if (!rebuildCoordinator.tryAcquire()) {
             rebuildMetrics.recordSkipped()
+            rebuildStatusHolder.record(
+                RebuildStatus(outcome = "SKIPPED", finishedAt = Instant.now(clock).toString()),
+            )
             logger.atInfo { message = "Rebuild skipped: lock not acquired (another instance running)" }
             return
         }
@@ -58,10 +62,29 @@ class RebuildService(
                 zones = snapshot.events.sumOf { it.zones.size },
                 durationNanos = System.nanoTime() - startNanos,
             )
+            rebuildStatusHolder.record(
+                RebuildStatus(
+                    outcome = "COMPLETED",
+                    events = snapshot.events.size,
+                    zones = snapshot.events.sumOf { it.zones.size },
+                    durationMs = (System.nanoTime() - startNanos) / 1_000_000,
+                    startedAt = now.toString(),
+                    finishedAt = Instant.now(clock).toString(),
+                ),
+            )
 
             notifyCompleted(snapshot, startedAt = now) // best-effort: 실패해도 성공 판정 불변
         } catch (e: Exception) {
             rebuildMetrics.recordFailed(System.nanoTime() - startNanos)
+            rebuildStatusHolder.record(
+                RebuildStatus(
+                    outcome = "FAILED",
+                    durationMs = (System.nanoTime() - startNanos) / 1_000_000,
+                    error = e.message ?: e::class.simpleName,
+                    startedAt = now.toString(),
+                    finishedAt = Instant.now(clock).toString(),
+                ),
+            )
             alertService.notify(
                 AlertContext(
                     trigger = AlertTrigger.REBUILD_FAILED,

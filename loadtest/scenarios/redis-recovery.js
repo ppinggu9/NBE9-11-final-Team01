@@ -41,18 +41,29 @@ import {
     approvePayment,
     sendPaymentWebhook,
     getEventDetail,
-} from '../../../../NBE9-11-final-Team01/loadtest/utils/helpers.js'
+} from '../utils/helpers.js'
 
 
 // ── 환경변수 ─────────────────────────────────────────────────
 const EVENT_ID = __ENV.EVENT_ID
-const ZONE_DB_ID = parseInt(__ENV.REDIS_STOCK_KEY.split(':')[1], 10)
+// ★ (a) 멀티 zone: ZONE_DB_IDS 우선, 없으면 REDIS_STOCK_KEY 단일로 폴백(baseline도 그대로 동작)
+const ZONE_DB_IDS = (
+    __ENV.ZONE_DB_IDS
+        ? __ENV.ZONE_DB_IDS.split(',').map((s) => parseInt(s, 10))
+        : [parseInt(__ENV.REDIS_STOCK_KEY.split(':')[1], 10)]
+).filter((n) => !isNaN(n))
 const LOAD_RATE = parseInt(__ENV.LOAD_RATE || '20', 10)
 const DURATION = __ENV.DURATION || '120s'
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080'
 
 if (!EVENT_ID) throw new Error('EVENT_ID 환경변수가 설정되지 않았습니다.')
-if (isNaN(ZONE_DB_ID)) throw new Error('REDIS_STOCK_KEY에서 zoneId를 파싱할 수 없습니다.')
+if (ZONE_DB_IDS.length === 0) throw new Error('zoneId 파싱 실패 (ZONE_DB_IDS/REDIS_STOCK_KEY 확인)')
+
+// ★ VU+iteration 라운드로빈으로 A/B/C/D 구역 분산
+function pickZone() {
+    return ZONE_DB_IDS[(__VU + __ITER) % ZONE_DB_IDS.length]
+}
+
 
 // ── 커스텀 메트릭 ─────────────────────────────────────────────
 const oversellErrors = new Counter('oversell_errors')          // 재고 음수 — 절대 0
@@ -76,8 +87,8 @@ export const options = {
             rate: LOAD_RATE,
             timeUnit: '1s',
             duration: DURATION,
-            preAllocatedVUs: 50,
-            maxVUs: 200,
+            preAllocatedVUs: 500,
+            maxVUs: 1000,
             exec: 'backgroundLoad',
         },
         // (B) 복구 옵저버 — 재고 1초 폴링으로 다운→복구·오버셀 관측(단일 VU)
@@ -112,7 +123,7 @@ export function backgroundLoad() {
         authenticated = true
     }
 
-    const res = placeOrder(EVENT_ID, ZONE_DB_ID)
+    const res = placeOrder(EVENT_ID, pickZone())
     const s = res.status
 
     if (s === 503) {

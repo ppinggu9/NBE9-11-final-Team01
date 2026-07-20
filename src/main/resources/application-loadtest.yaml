@@ -18,6 +18,9 @@ spring:
             port: 6380
     exposed:
         generate-ddl: true   # 컨테이너 재기동 시 스키마 자동 생성
+    devtools:
+        restart:
+            enabled: false
 
 logging:
     file:
@@ -25,6 +28,7 @@ logging:
     level:
         root: INFO
         com.develop.snaptix: DEBUG
+        com.develop.snaptix.global.redis.support.RedisActionLogger: WARN
 
 snaptix:
     rate-limit:

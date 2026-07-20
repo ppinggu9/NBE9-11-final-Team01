@@ -33,7 +33,7 @@ class RebuildServiceUnitTest {
     private val coordinator = mockk<RebuildCoordinator>(relaxUnitFun = true)
     private val readOnly = mockk<ReadOnlyModeHolder>(relaxUnitFun = true)
     private val alertService = mockk<AlertService>(relaxUnitFun = true)
-
+    private val rebuildStatusHolder = mockk<RebuildStatusHolder>(relaxUnitFun = true) // ★ 추가
     private val fixedInstant = Instant.parse("2026-06-25T03:00:00Z")
     private val clock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
 
@@ -45,6 +45,7 @@ class RebuildServiceUnitTest {
             coordinator,
             readOnly,
             rebuildMetrics,
+            rebuildStatusHolder,
             alertService,
             clock,
         )
@@ -73,6 +74,7 @@ class RebuildServiceUnitTest {
         verify(exactly = 0) { snapshotReader.read(any()) }
         verify(exactly = 0) { writer.writeEventInfo(any(), any()) }
         verify(exactly = 0) { alertService.notify(any()) }
+        verify(exactly = 1) { rebuildStatusHolder.record(match { it.outcome == "SKIPPED" }) }
         verify(exactly = 0) { coordinator.release() } // 락 못 잡았으면 해제도 없음(早期 return)
     }
 
@@ -97,6 +99,9 @@ class RebuildServiceUnitTest {
             readOnly.disable()
             coordinator.release()
         }
+        verify(exactly = 1) {
+            rebuildStatusHolder.record(match { it.outcome == "COMPLETED" && it.events == 1 && it.zones == 1 })
+        }
     }
 
     @Test
@@ -114,6 +119,10 @@ class RebuildServiceUnitTest {
             alertService.notify(match<AlertContext> { it.trigger == AlertTrigger.REBUILD_COMPLETED })
         }
         verify(exactly = 0) { writer.writeEventInfo(any(), any()) }
+
+        verify(exactly = 1) {
+            rebuildStatusHolder.record(match { it.outcome == "FAILED" && it.error == "snapshot failed" })
+        }
         // 실패해도 finally 에서 반드시 해제
         verify(exactly = 1) { readOnly.disable() }
         verify(exactly = 1) { coordinator.release() }
