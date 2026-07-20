@@ -22,6 +22,7 @@ services:
 
     redis-loadtest:
         image: redis:8.8.0
+        command: redis-server --save "" --appendonly no   # ← 추가: stop/start = 확실한 빈 Redis
         container_name: snaptix-redis-loadtest
         ports:
             - "6380:6379"

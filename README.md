@@ -43,18 +43,18 @@ SnapTix는 이 4가지를 **아키텍처 차원에서** 막는 데 집중합니�
 
 ## 🧱 기술 스택
 
-| 구분 | 사용 기술 |
-| --- | --- |
-| 언어 / 런타임 | Kotlin, JVM |
-| 프레임워크 | Spring Boot, Spring Security, Resilience4j (서킷 브레이커) |
-| 데이터 (SSOT) | MySQL |
-| 인메모리 / 큐 | Redis (Streams · Pub/Sub · AOF 영속화) |
-| 인증 | JWT (httpOnly 쿠키), RBAC |
-| 관측성 | Micrometer · Prometheus · Grafana · Slack Webhook |
-| 부하 테스트 | k6 (xk6-sse 포함) |
-| 테스트 | JUnit · MockK · Testcontainers · ArchUnit · Kover |
-| 품질 | ktlint · detekt · GitHub Actions (CI) |
-| 인프라 | Docker Compose · AWS · Nginx Proxy Manager |
+| 구분 | 사용 기술                                                                                                 |
+| --- |-------------------------------------------------------------------------------------------------------|
+| 언어 / 런타임 | Kotlin, JVM                                                                                           |
+| 프레임워크 | Spring Boot, Spring Security, Resilience4j (서킷 브레이커)                                                  |
+| 데이터 (SSOT) | MySQL, Kotlin Exposed (ORM)                                                                           |
+| 인메모리 / 큐 | Redis (Streams · Pub/Sub · AOF 영속화)                                                                   |
+| 인증 | JWT (httpOnly 쿠키), RBAC                                                                               |
+| 관측성 | Micrometer · Prometheus · Grafana · Slack Webhook · 구조화 로깅(kotlin-logging + Logstash Logback Encoder) |
+| 부하 테스트 | k6 (xk6-sse 포함)                                                                                       |
+| 테스트 | JUnit · MockK · Testcontainers · ArchUnit · Kover                                                     |
+| 품질 | ktlint · detekt · GitHub Actions (CI)                                                                 |
+| 인프라 | Docker Compose · AWS · Nginx Proxy Manager · HA_Proxy                                                 |
 
 ---
 

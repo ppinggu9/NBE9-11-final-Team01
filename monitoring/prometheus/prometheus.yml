@@ -17,8 +17,8 @@ scrape_configs:
       scheme: https
       metrics_path: /actuator/prometheus
       basic_auth:
-           username: snaptix-metrics                        # 리터럴(비밀 아님, NPM 자격과 동일)
-           password_file: /etc/prometheus/secrets/prom_pass # ← 비밀번호는 파일로
+          username: snaptix-metrics                        # 리터럴(비밀 아님, NPM 자격과 동일)
+          password_file: /etc/prometheus/secrets/prom_pass # ← 비밀번호는 파일로
       static_configs:
           - targets: ['metrics58546.example-test-domain11.shop']               # 호스트명(비밀 아님)
             labels:

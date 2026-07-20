@@ -10,8 +10,8 @@
  *  - backpressure_hit  : 429 응답 비율 20% 미만 → 과도한 백프레셔 감지
  */
 export const thresholds = {
-  http_req_failed: ['rate<0.01'],
-  http_req_duration: ['p(95)<300', 'p(99)<600'],
-  oversell_errors: ['count<1'],
-  backpressure_hit: ['rate<0.2'],
+    http_req_failed: ['rate<0.01'],
+    http_req_duration: ['p(95)<300', 'p(99)<600'],
+    oversell_errors: ['count<1'],
+    backpressure_hit: ['rate<0.2'],
 }

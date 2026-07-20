@@ -21,8 +21,8 @@ services:
             - --config.file=/etc/prometheus/prometheus.yml
             - --storage.tsdb.retention.time=15d
         # Linux 에서 호스트(앱) 접근용. Docker Desktop(Mac/Win)은 host.docker.internal 기본 지원.
-#        extra_hosts:
-#            - "host.docker.internal:host-gateway"
+        #        extra_hosts:
+        #            - "host.docker.internal:host-gateway"
         restart: unless-stopped
 
     grafana:
