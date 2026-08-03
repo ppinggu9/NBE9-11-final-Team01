@@ -4,6 +4,7 @@ import com.develop.snaptix.domain.event.dto.EventBulkCreateRequest
 import com.develop.snaptix.domain.event.repository.EventInsertResult
 import com.develop.snaptix.domain.order.config.OrderStreamProperties
 import com.develop.snaptix.domain.zone.repository.ZoneInsertResult
+import com.develop.snaptix.global.redis.gateway.CanaryRedisGateway
 import com.develop.snaptix.global.redis.gateway.EventLifeCycleRedisGateway
 import com.develop.snaptix.global.redis.gateway.schema.EventInfo
 import org.springframework.stereotype.Component
@@ -17,6 +18,7 @@ class EventRedisInitializer(
     private val eventLifeCycleRedisGateway: EventLifeCycleRedisGateway,
     private val objectMapper: ObjectMapper,
     private val orderStreamProperties: OrderStreamProperties,
+    private val canaryGateway: CanaryRedisGateway,
 ) {
     fun initialize(
         event: EventInsertResult,
@@ -27,6 +29,7 @@ class EventRedisInitializer(
         val arguments = buildArguments(event, request, zones)
 
         eventLifeCycleRedisGateway.initializeEventInfrastructure(keys, arguments)
+        canaryGateway.markAlive()
     }
 
     private fun stockKey(zoneId: Long): String = "ZONE:$zoneId:stock"

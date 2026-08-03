@@ -3,6 +3,7 @@ package com.develop.snaptix.global.aop.aspect
 import com.develop.snaptix.global.alert.model.AlertContext
 import com.develop.snaptix.global.alert.model.AlertTrigger
 import com.develop.snaptix.global.alert.service.AlertService
+import com.develop.snaptix.global.redis.gateway.CanaryRedisGateway
 import com.develop.snaptix.global.resilience.RebuildService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.circuitbreaker.CircuitBreaker.State.CLOSED
@@ -28,6 +29,7 @@ class RedisCircuitBreakerEventListener(
     private val circuitBreakerRegistry: CircuitBreakerRegistry,
     private val alertService: AlertService,
     private val rebuildService: RebuildService,
+    private val canaryGateway: CanaryRedisGateway,
     @Qualifier("rebuildExecutor") private val rebuildExecutor: Executor,
 ) {
     private val logger = KotlinLogging.logger {}
@@ -68,7 +70,18 @@ class RedisCircuitBreakerEventListener(
                             ),
                         )
                     // 🆕 CLOSED(복구) → 전용 executor 로 재구축 위임(블로킹 회피)
-                    CLOSED -> rebuildExecutor.execute { rebuildService.rebuild() }
+                    CLOSED ->
+                        rebuildExecutor.execute {
+                            if (canaryGateway.isAlive()) {
+                                // 데이터 살아있음 = 무손실 트립 → rebuild 스킵 (플래핑·pause 억제)
+                                logger.atInfo {
+                                    message = "Rebuild skipped by canary: Redis data intact (transient trip)"
+                                    payload = mapOf("action" to "REBUILD_CANARY_SKIP", "circuit" to "redis")
+                                }
+                            } else {
+                                rebuildService.rebuild() // 데이터 소실 확정 → 재구축
+                            }
+                        }
                     else -> Unit
                 }
             }

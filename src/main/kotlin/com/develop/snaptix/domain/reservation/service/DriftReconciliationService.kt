@@ -3,7 +3,6 @@ package com.develop.snaptix.domain.reservation.service
 import com.develop.snaptix.domain.auditlog.repository.AuditLogRepository
 import com.develop.snaptix.domain.reservation.repository.DriftStockRepository
 import com.develop.snaptix.domain.reservation.repository.ZoneExpected
-import com.develop.snaptix.domain.reservation.service.DriftReconciliationService.Companion.CHUNK_SIZE
 import com.develop.snaptix.global.alert.model.AlertContext
 import com.develop.snaptix.global.alert.model.AlertTrigger
 import com.develop.snaptix.global.alert.service.AlertService
@@ -51,7 +50,7 @@ class DriftReconciliationService(
         // chunked: "컬렉션을 n 개씩 잘라서 처리 단위로 나누는 함수"(버스 태우기)
         // => size 양수, 생성된 list는 바로 반환, 나머지값은 그대로 전송(%연산자처럼 연산)
         val acc = DriftReport.Accumulator() // 누적 집계기 생성,  toReport()로 누적
-        plans.chunked(CHUNK_SIZE).forEach { chunk -> applyChunk(chunk, acc) } // 참조만 전달, 상태 공유
+        plans.chunked(reconcileProperties.driftChunkSize).forEach { chunk -> applyChunk(chunk, acc) } // 참조만 전달, 상태 공유
 
         // acc 목적: 드리프트 실행 중 발생했던 결과를 참조 전달로 누적하고 리포트에 반환(상태 수집기)
         return acc.toReport().also { report ->
@@ -171,10 +170,5 @@ class DriftReconciliationService(
             message = "Stock drift oversell detected (alert only)"
             payload = mapOf("zoneId" to plan.zoneId, "actual" to actual, "expected" to plan.expected)
         }
-    }
-
-    private companion object {
-        // 정확값은 부하테스트로 확정(잠정 기본값). 추후 ReconcileProperties 로 외부화 가능.
-        const val CHUNK_SIZE = 500
     }
 }

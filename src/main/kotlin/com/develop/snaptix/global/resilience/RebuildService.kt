@@ -6,6 +6,7 @@ import com.develop.snaptix.global.alert.model.AlertContext
 import com.develop.snaptix.global.alert.model.AlertTrigger
 import com.develop.snaptix.global.alert.service.AlertService
 import com.develop.snaptix.global.observability.RebuildMetrics
+import com.develop.snaptix.global.redis.gateway.CanaryRedisGateway
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Component
@@ -29,6 +30,7 @@ class RebuildService(
     private val rebuildCoordinator: RebuildCoordinator,
     private val readOnlyModeHolder: ReadOnlyModeHolder,
     private val rebuildMetrics: RebuildMetrics,
+    private val canaryGateway: CanaryRedisGateway,
     private val rebuildStatusHolder: RebuildStatusHolder,
     private val alertService: AlertService,
     @Qualifier("alertClock") private val clock: Clock,
@@ -55,6 +57,7 @@ class RebuildService(
             reconcileService.reconcileExpired(now) // (a) 만료 PENDING → RELEASED 먼저
             val snapshot = rebuildSnapshotReader.read(now) // 단일 일관 스냅샷
             applySnapshot(snapshot) // (b) event:info → (c+d) stock·claimed
+            canaryGateway.markAlive()
 
             // 재구축 작업 성공 → 알림 이전에 측정/기록(알림 레이턴시·실패와 분리)
             rebuildMetrics.recordCompleted(

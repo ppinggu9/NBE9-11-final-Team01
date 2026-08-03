@@ -22,6 +22,11 @@ spring:
         restart:
             enabled: false
 
+# driftReconcile 청크 테스트
+event:
+    cleanup:
+        cron: "*/30 * * * * *"   # 1h → 30초
+
 logging:
     file:
         name: ./snaptix-loadtest.log

@@ -52,7 +52,7 @@ class LoadTestDataInitializer(
         private const val USER_EMAIL_PREFIX = "load-user"
         private const val USER_EMAIL_DOMAIN = "test.com"
         private const val USER_PASSWORD = "Test1234!"
-        private const val USER_COUNT = 1000
+        private const val USER_COUNT = 2000
 
         private const val EVENT_NAME = "Load Test Event"
         private const val UNIT_PRICE = 10_000

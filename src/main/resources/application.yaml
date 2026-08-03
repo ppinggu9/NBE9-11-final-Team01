@@ -51,8 +51,8 @@ resilience4j:
                 failure-rate-threshold: 50
                 slow-call-duration-threshold: 2s
                 slow-call-rate-threshold: 80
-                wait-duration-in-open-state: 10s
-                permitted-number-of-calls-in-half-open-state: 3
+                wait-duration-in-open-state: 15s # 10s일 경우 너무 빨리 닫혀서 에러
+                permitted-number-of-calls-in-half-open-state: 10 # 3일 경우 너무 적어서 half-open와 자기자신 circuitbreak에 걸림
                 automatic-transition-from-open-to-half-open-enabled: true
                 record-failure-predicate: com.develop.snaptix.global.aop.aspect.RedisExceptionPredicate
                 ignore-exceptions:
@@ -80,6 +80,7 @@ reconcile:
     scheduler-cron: "0 */10 * * * *"   # 만료 정산 10분 주기 (Story 13.3-2차)
     drift-cron: "0 */30 * * * *"       # 상시 드리프트 정산 30분 주기 (Story 13.4)
     rebuild-lock-ttl: 5m     # 다중 인스턴스 단일 재구축 락 TTL
+    drift-chunk-size: 500   # 청크단위
 
 management:
     endpoints:

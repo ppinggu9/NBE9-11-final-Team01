@@ -69,4 +69,7 @@ class RedisKeyFactory {
 
     /** 이벤트 메타데이터 Cache-Aside. */
     fun eventInfo(eventPublicId: UUID): String = "event:info:$eventPublicId"
+
+    /** 데이터 생존 표식(카나리). TTL 없음 — Redis가 데이터를 잃으면 함께 사라진다. */
+    fun canary(): String = "snaptix:redis:canary"
 }

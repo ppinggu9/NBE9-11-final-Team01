@@ -10,6 +10,7 @@ import com.develop.snaptix.global.alert.model.AlertContext
 import com.develop.snaptix.global.alert.model.AlertTrigger
 import com.develop.snaptix.global.alert.service.AlertService
 import com.develop.snaptix.global.observability.RebuildMetrics
+import com.develop.snaptix.global.redis.gateway.CanaryRedisGateway
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -33,6 +34,7 @@ class RebuildServiceUnitTest {
     private val coordinator = mockk<RebuildCoordinator>(relaxUnitFun = true)
     private val readOnly = mockk<ReadOnlyModeHolder>(relaxUnitFun = true)
     private val alertService = mockk<AlertService>(relaxUnitFun = true)
+    private val canaryGateway = mockk<CanaryRedisGateway>(relaxUnitFun = true)
     private val rebuildStatusHolder = mockk<RebuildStatusHolder>(relaxUnitFun = true) // ★ 추가
     private val fixedInstant = Instant.parse("2026-06-25T03:00:00Z")
     private val clock = Clock.fixed(fixedInstant, ZoneOffset.UTC)
@@ -45,6 +47,7 @@ class RebuildServiceUnitTest {
             coordinator,
             readOnly,
             rebuildMetrics,
+            canaryGateway,
             rebuildStatusHolder,
             alertService,
             clock,
@@ -102,6 +105,7 @@ class RebuildServiceUnitTest {
         verify(exactly = 1) {
             rebuildStatusHolder.record(match { it.outcome == "COMPLETED" && it.events == 1 && it.zones == 1 })
         }
+        verify(exactly = 1) { canaryGateway.markAlive() }
     }
 
     @Test
@@ -124,6 +128,7 @@ class RebuildServiceUnitTest {
             rebuildStatusHolder.record(match { it.outcome == "FAILED" && it.error == "snapshot failed" })
         }
         // 실패해도 finally 에서 반드시 해제
+        verify(exactly = 0) { canaryGateway.markAlive() }
         verify(exactly = 1) { readOnly.disable() }
         verify(exactly = 1) { coordinator.release() }
     }

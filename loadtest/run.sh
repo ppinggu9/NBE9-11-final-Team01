@@ -59,7 +59,7 @@ for arg in "$@"; do
   case "$arg" in
     --reset) DO_RESET=true ;;
     --no-reset) DO_RESET=false ;;
-    stop|order-load|sse-reconnect|redis-recovery) SCENARIO="$arg" ;;
+    stop|order-load|sse-reconnect|redis-recovery|cleanup|drift-chunk) SCENARIO="$arg" ;;
     *)
       echo "[오류] 알 수 없는 인자: $arg"
       echo "       사용법: ./loadtest/run.sh [order-load|sse-reconnect|stop] [--reset|--no-reset]"

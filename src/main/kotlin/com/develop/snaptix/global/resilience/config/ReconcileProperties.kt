@@ -20,4 +20,5 @@ class ReconcileProperties {
     var schedulerCron: String = "0 */10 * * * *"
     var driftCron: String = "0 */30 * * * *"
     var rebuildLockTtl: Duration = Duration.ofMinutes(5)
+    var driftChunkSize: Int = 500
 }

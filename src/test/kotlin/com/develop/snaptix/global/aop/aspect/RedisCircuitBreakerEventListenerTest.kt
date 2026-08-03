@@ -3,6 +3,7 @@ package com.develop.snaptix.global.aop.aspect
 import com.develop.snaptix.global.alert.model.AlertContext
 import com.develop.snaptix.global.alert.model.AlertTrigger
 import com.develop.snaptix.global.alert.service.AlertService
+import com.develop.snaptix.global.redis.gateway.CanaryRedisGateway
 import com.develop.snaptix.global.resilience.RebuildService
 import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig
@@ -19,6 +20,7 @@ import java.util.concurrent.Executor
 class RedisCircuitBreakerEventListenerTest {
     private val alertService = mockk<AlertService>(relaxUnitFun = true) // unit 자동반환
     private val rebuildService = mockk<RebuildService>(relaxUnitFun = true)
+    private val canaryGateway = mockk<CanaryRedisGateway>()
     private val syncExecutor = Executor { it.run() } // 동기 실행(같은 스레드)
 
     private lateinit var registry: CircuitBreakerRegistry
@@ -28,6 +30,7 @@ class RedisCircuitBreakerEventListenerTest {
     fun setUp() {
         registry = CircuitBreakerRegistry.ofDefaults()
         circuitBreaker = registry.circuitBreaker("redis", CircuitBreakerConfig.custom().build())
+        every { canaryGateway.isAlive() } returns false
     }
 
     /** 리스너 생성+등록. executor 만 테스트별로 달라질 수 있어 인자로 받는다(기본: 동기). */
@@ -36,6 +39,7 @@ class RedisCircuitBreakerEventListenerTest {
             circuitBreakerRegistry = registry,
             alertService = alertService,
             rebuildService = rebuildService,
+            canaryGateway = canaryGateway,
             rebuildExecutor = executor,
         ).registerListeners()
     }
@@ -123,5 +127,27 @@ class RedisCircuitBreakerEventListenerTest {
         // 2) 위임된 Runnable 이 rebuild 를 감싼다
         runnableSlot.captured.run()
         verify(exactly = 1) { rebuildService.rebuild() }
+    }
+
+    @Test
+    fun `카나리 생존이면 CLOSED에서 rebuild를 스킵한다`() {
+        every { canaryGateway.isAlive() } returns true // 데이터 살아있음(무손실 트립)
+        registerListener()
+
+        forcedOpenToClosed()
+
+        verify(exactly = 1) { canaryGateway.isAlive() }
+        verify(exactly = 0) { rebuildService.rebuild() } // ★ 스킵
+    }
+
+    @Test
+    fun `카나리 소실이면 CLOSED에서 rebuild를 실행한다`() {
+        every { canaryGateway.isAlive() } returns false // 데이터 소실 확정
+        registerListener()
+
+        forcedOpenToClosed()
+
+        verify(exactly = 1) { canaryGateway.isAlive() }
+        verify(exactly = 1) { rebuildService.rebuild() } // ★ 실행
     }
 }
