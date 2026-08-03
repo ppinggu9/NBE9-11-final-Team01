@@ -98,6 +98,7 @@ class RebuildServiceUnitTest {
             snapshotReader.read(fixedInstant)
             writer.writeEventInfo(any(), 100)
             writer.rebuildZone(1L, 60, listOf("o1", "o2"))
+            rebuildMetrics.recordCompleted(1, 1, any())
             alertService.notify(match<AlertContext> { it.trigger == AlertTrigger.REBUILD_COMPLETED })
             readOnly.disable()
             coordinator.release()
@@ -129,6 +130,29 @@ class RebuildServiceUnitTest {
         }
         // 실패해도 finally 에서 반드시 해제
         verify(exactly = 0) { canaryGateway.markAlive() }
+        verify(exactly = 1) { readOnly.disable() }
+        verify(exactly = 1) { coordinator.release() }
+    }
+
+    @Test
+    fun `should_재구축결과_유지_when_완료알림_전송이_실패해도_best_effort면`() {
+        every { coordinator.tryAcquire() } returns true
+        every { reconcileService.reconcileExpired(fixedInstant) } returns ReconcileReport(0, 0, 0)
+        every { snapshotReader.read(fixedInstant) } returns snapshotOf()
+        // 완료 알림만 실패시킨다(시작 알림은 정상 — relaxUnitFun 이 처리)
+        every {
+            alertService.notify(match<AlertContext> { it.trigger == AlertTrigger.REBUILD_COMPLETED })
+        } throws RuntimeException("slack down")
+
+        service.rebuild() // 예외가 밖으로 전파되지 않아야 함
+
+        // 알림 실패가 재구축 결과를 오염시키지 않는다
+        verify(exactly = 1) { rebuildMetrics.recordCompleted(1, 1, any()) }
+        verify(exactly = 1) {
+            rebuildStatusHolder.record(match { it.outcome == "COMPLETED" && it.events == 1 && it.zones == 1 })
+        }
+        verify(exactly = 0) { rebuildMetrics.recordFailed(any()) }
+        verify(exactly = 1) { canaryGateway.markAlive() }
         verify(exactly = 1) { readOnly.disable() }
         verify(exactly = 1) { coordinator.release() }
     }

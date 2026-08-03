@@ -19,7 +19,11 @@ class AdminDriftController(
     private val driftReconciliationService: DriftReconciliationService,
     @Qualifier("alertClock") private val clock: Clock,
 ) {
-    data class DriftTriggerResponse(val report: DriftReport, val durationMs: Long)
+    data class DriftTriggerResponse(
+        val report: DriftReport,
+        val durationMs: Long,
+    )
+
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     fun drift(): ResponseEntity<DriftTriggerResponse> {
